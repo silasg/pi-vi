@@ -31,9 +31,6 @@ function getSettingsManager(cwd: string = process.cwd()): SettingsManager {
 	return settingsManager;
 }
 
-function isHardwareCursorEnabled(): boolean {
-	return getSettingsManager().getShowHardwareCursor();
-}
 import { Editor, matchesKey, truncateToWidth, visibleWidth, type TUI, type EditorTheme } from "@earendil-works/pi-tui";
 
 type Mode = "normal" | "insert";
@@ -1168,18 +1165,24 @@ class ViEditor extends CustomEditor {
 
 	// --- Rendering ---
 
-	/**
-	 * Replace the software cursor style for insert mode.
-	 *
-	 * COUPLING NOTE: Pi wraps its software cursor in pi:fc / pi:/fc markers
-	 * and resolves them to reverse video after component rendering. Replace
-	 * only that wrapper, preserving the cursor-position marker and grapheme.
-	 * If Pi changes its cursor markers, this will need updating.
-	 */
-	private replaceInsertCursorStyle(lines: string[]): void {
-		for (let i = 0; i < lines.length; i++) {
-			lines[i] = lines[i]!.replace(/\x1b_pi:fc\x07(.*?)\x1b_pi:\/fc\x07/s, '\x1b[4m$1\x1b[24m');
+	private cursorMode: Mode | undefined;
+
+	private updateCursorStyle(): void {
+		if (!this.focused || !this.tui.getShowHardwareCursor()) {
+			this.restoreCursor();
+			return;
 		}
+		if (this.cursorMode !== this.mode) {
+			// DECSCUSR: steady beam in insert mode, steady block in normal mode.
+			this.tui.terminal.write(this.mode === "insert" ? "\x1b[6 q" : "\x1b[2 q");
+			this.cursorMode = this.mode;
+		}
+	}
+
+	restoreCursor(): void {
+		if (this.cursorMode === undefined) return;
+		this.tui.terminal.write("\x1b[0 q");
+		this.cursorMode = undefined;
 	}
 
 	/**
@@ -1202,11 +1205,15 @@ class ViEditor extends CustomEditor {
 	}
 
 	render(width: number): string[] {
+		this.updateCursorStyle();
 		const lines = super.render(width);
 		if (lines.length === 0) return lines;
 
-		if (this.mode === "insert" && !isHardwareCursorEnabled()) {
-			this.replaceInsertCursorStyle(lines);
+		if (this.mode === "insert" && !this.tui.getShowHardwareCursor()) {
+			// Keep the software underline when Pi's hardware cursor is disabled.
+			for (let i = 0; i < lines.length; i++) {
+				lines[i] = lines[i]!.replace(/\x1b_pi:fc\x07(.*?)\x1b_pi:\/fc\x07/s, '\x1b[4m$1\x1b[24m');
+			}
 		}
 
 		this.insertPromptIndicator(lines);
@@ -1282,6 +1289,7 @@ export default function (
 	const enableViMode = (ctx: Pick<ExtensionContext, "ui">) => {
 		clipboardContext = ctx;
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, kb: KeybindingsManager) => {
+			currentEditor?.restoreCursor();
 			currentEditor = new ViEditor(tui, theme, kb, writeClipboard);
 			currentEditor.onModeChange = (mode: Mode) => updateStatus(ctx, mode);
 			return currentEditor;
@@ -1291,6 +1299,7 @@ export default function (
 	};
 
 	const disableViMode = (ctx: Pick<ExtensionContext, "ui">) => {
+		currentEditor?.restoreCursor();
 		ctx.ui.setEditorComponent(undefined);
 		ctx.ui.setStatus("vi-mode", undefined);
 		currentEditor = null;
@@ -1300,12 +1309,13 @@ export default function (
 	pi.on("session_start", (_event, ctx) => {
 		const settings = getSettingsManager(ctx.cwd);
 		enableViMode(ctx);
-		if (settings.getShowHardwareCursor()) {
-			ctx.ui.notify("vi-mode: Hardware cursor is on — mode cursor won't be visible. Disable in /settings.", "warning");
-		}
 		if (settings.getEditorPaddingX() < 1) {
 			ctx.ui.notify("vi-mode: Editor padding is 0 — mode indicator (❯/❮) won't be shown. Set editorPaddingX > 0 in /settings.", "warning");
 		}
+	});
+
+	pi.on("session_shutdown", () => {
+		currentEditor?.restoreCursor();
 	});
 
 	pi.registerCommand("vi", {

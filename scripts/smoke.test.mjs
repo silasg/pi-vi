@@ -82,6 +82,14 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
   let editorKeybindings = new KeybindingsManager();
   const statuses = new Map();
   const notifications = [];
+  const terminalWrites = [];
+  let showHardwareCursor = false;
+  const tui = {
+    requestRender() {},
+    terminal: { rows: 24, columns: 80, write: (data) => terminalWrites.push(data) },
+    getShowHardwareCursor: () => showHardwareCursor,
+    setShowHardwareCursor: (enabled) => { showHardwareCursor = enabled; },
+  };
   const identity = (text) => text;
   const editorTheme = {
     borderColor: identity,
@@ -99,7 +107,7 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
       setEditorComponent: (next) => {
         factory = next;
         editor = next?.(
-          { requestRender() {}, terminal: { rows: 24, columns: 80 } },
+          tui,
           editorTheme,
           editorKeybindings,
         );
@@ -135,6 +143,78 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
   assert.ok(rendered.some((line) => line.includes("❮")), "normal indicator renders");
   editor.handleInput("i");
   assert.ok(editor.render(80).some((line) => line.includes("❯")), "insert indicator renders");
+
+  for (const initialHardwareCursor of [false, true]) {
+    await t.test(`mode cursor respects hardware setting ${initialHardwareCursor}`, async () => {
+      await extension.commands.get("vi").handler("off", context);
+      showHardwareCursor = initialHardwareCursor;
+      await extension.commands.get("vi").handler("on", context);
+      editor.focused = true;
+      editor.setText("Hello 世界");
+      terminalWrites.length = 0;
+
+      const lines = editor.render(80);
+      assert.equal(showHardwareCursor, initialHardwareCursor);
+      assert.deepEqual(terminalWrites, initialHardwareCursor ? ["\x1b[6 q"] : []);
+      assert.ok(lines.some((line) => line.includes("\x1b_pi:c\x07")), "retain Pi's cursor position marker");
+      assert.equal(lines.some((line) => line.includes("\x1b[4m")), !initialHardwareCursor);
+      editor.render(80);
+      assert.equal(terminalWrites.length, initialHardwareCursor ? 1 : 0, "unchanged renders do not resend the shape");
+
+      editor.handleInput("\x1b");
+      const normalLines = editor.render(80);
+      assert.ok(normalLines.some((line) => line.includes("\x1b_pi:fc\x07")), "retain software block cursor");
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[2 q" : undefined);
+      editor.handleInput("i");
+      editor.render(80);
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[6 q" : undefined);
+
+      editor.focused = false;
+      editor.render(80);
+      assert.equal(showHardwareCursor, initialHardwareCursor);
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[0 q" : undefined);
+      editor.focused = true;
+      editor.render(80);
+      assert.equal(showHardwareCursor, initialHardwareCursor);
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[6 q" : undefined);
+      await extension.commands.get("vi").handler("off", context);
+      assert.equal(showHardwareCursor, initialHardwareCursor);
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[0 q" : undefined);
+
+      await extension.commands.get("vi").handler("on", context);
+      editor.focused = true;
+      editor.render(80);
+      await extension.handlers.get("session_shutdown")[0]({ type: "session_shutdown" }, context);
+      assert.equal(showHardwareCursor, initialHardwareCursor);
+      assert.equal(terminalWrites.at(-1), initialHardwareCursor ? "\x1b[0 q" : undefined);
+    });
+  }
+
+  await t.test("cursor follows hardware setting changes on the existing editor", async () => {
+    await extension.commands.get("vi").handler("on", context);
+    editor.focused = true;
+    editor.setText("draft");
+    showHardwareCursor = true;
+    terminalWrites.length = 0;
+    editor.render(80);
+    assert.deepEqual(terminalWrites, ["\x1b[6 q"]);
+
+    showHardwareCursor = false;
+    const softwareLines = editor.render(80);
+    assert.equal(showHardwareCursor, false);
+    assert.equal(terminalWrites.at(-1), "\x1b[0 q");
+    assert.ok(softwareLines.some((line) => line.includes("\x1b[4m")));
+    const writes = terminalWrites.length;
+    editor.render(80);
+    assert.equal(terminalWrites.length, writes);
+
+    showHardwareCursor = true;
+    editor.render(80);
+    assert.equal(terminalWrites.at(-1), "\x1b[6 q");
+    await extension.commands.get("vi").handler("off", context);
+    assert.equal(showHardwareCursor, true);
+    assert.equal(terminalWrites.at(-1), "\x1b[0 q");
+  });
 
   await t.test("working status renders in the top border without displacing vi indicators", async (st) => {
     // Arrange
