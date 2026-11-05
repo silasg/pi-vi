@@ -1165,16 +1165,13 @@ class ViEditor extends CustomEditor {
 
 	// --- Rendering ---
 
-	private previousHardwareCursor: boolean | undefined;
 	private cursorMode: Mode | undefined;
 
 	private updateCursorStyle(): void {
-		if (!this.focused) {
+		if (!this.focused || !this.tui.getShowHardwareCursor()) {
 			this.restoreCursor();
 			return;
 		}
-		this.previousHardwareCursor ??= this.tui.getShowHardwareCursor();
-		this.tui.setShowHardwareCursor(true);
 		if (this.cursorMode !== this.mode) {
 			// DECSCUSR: steady beam in insert mode, steady block in normal mode.
 			this.tui.terminal.write(this.mode === "insert" ? "\x1b[6 q" : "\x1b[2 q");
@@ -1183,10 +1180,8 @@ class ViEditor extends CustomEditor {
 	}
 
 	restoreCursor(): void {
-		if (this.previousHardwareCursor === undefined) return;
+		if (this.cursorMode === undefined) return;
 		this.tui.terminal.write("\x1b[0 q");
-		this.tui.setShowHardwareCursor(this.previousHardwareCursor);
-		this.previousHardwareCursor = undefined;
 		this.cursorMode = undefined;
 	}
 
@@ -1213,6 +1208,13 @@ class ViEditor extends CustomEditor {
 		this.updateCursorStyle();
 		const lines = super.render(width);
 		if (lines.length === 0) return lines;
+
+		if (this.mode === "insert" && !this.tui.getShowHardwareCursor()) {
+			// Keep the software underline when Pi's hardware cursor is disabled.
+			for (let i = 0; i < lines.length; i++) {
+				lines[i] = lines[i]!.replace(/\x1b_pi:fc\x07(.*?)\x1b_pi:\/fc\x07/s, '\x1b[4m$1\x1b[24m');
+			}
+		}
 
 		this.insertPromptIndicator(lines);
 

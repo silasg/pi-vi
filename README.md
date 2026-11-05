@@ -45,12 +45,14 @@ to Pi. Enter can still submit a prompt in normal mode.
 
 The footer shows `vi [INSERT]` or `vi [NORMAL]`. The first editor line has a
 green `❯` or yellow `❮` indicator.
-Insert mode uses a vertical terminal cursor, like Neovim. Normal mode uses a block cursor.
 Pending counts and operators appear in the bottom border.
 
-The extension enables the hardware cursor while the editor has focus, regardless of `showHardwareCursor`.
-It restores Pi's hardware-cursor setting and the terminal's default cursor shape when focus leaves the editor, vi mode is disabled, or the session ends.
-The terminal must support DECSCUSR cursor shapes.
+The extension respects Pi's `showHardwareCursor` setting:
+- `true`: a vertical terminal cursor in insert mode, like Neovim, and a block in normal mode. The terminal must support DECSCUSR cursor shapes.
+- `false`: a software underline in insert mode and Pi's software block in normal mode.
+
+When using the hardware cursor, the extension restores the terminal's default cursor shape when focus leaves the editor, vi mode is disabled, or the session ends.
+It never changes `showHardwareCursor`.
 Use `editorPaddingX > 0` for the mode indicator. Restart after changing this setting.
 
 ## Normal-mode keys
