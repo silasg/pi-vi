@@ -152,8 +152,11 @@ need that sandbox's local clipboard.
    `Ctrl+V` (`Alt+V` on Windows/WSL), which is separate from this toggle.
 2. The extension replaces other custom editors instead of composing with them.
    Disabling restores Pi's default editor, not another extension's editor.
-3. The first insert-mode `Esc` switches modes rather than reaching Pi's interrupt
-   handling. In normal mode, `Esc` is forwarded to Pi.
+3. Insert-mode `Esc` switches to normal mode.
+   With a draft present, that first press is not forwarded to Pi.
+   On an empty prompt, each press reaches Pi immediately, including its interrupt handling.
+   Press `Esc` twice within Pi's 500 ms window to trigger the configured double-Escape action without a third press.
+   In normal mode, `Esc` is forwarded to Pi.
 4. Movement and undo resolve Pi's configured shortcuts. Internal motions bypass
    application and extension shortcuts, but conflicting editor-action bindings
    still follow Pi's precedence; use unambiguous editor bindings. Actions disabled

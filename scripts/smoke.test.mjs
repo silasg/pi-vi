@@ -144,6 +144,120 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
   editor.handleInput("i");
   assert.ok(editor.render(80).some((line) => line.includes("❯")), "insert indicator renders");
 
+  for (const escape of ["\x1b", "\x1b[27u"]) {
+    await t.test(`double Escape from insert mode (${JSON.stringify(escape)})`, async (st) => {
+      st.mock.method(Date, "now", () => 10_000);
+      await extension.commands.get("vi").handler("on", context);
+      const current = editor;
+      let interrupts = 0;
+      let lastEscapeTime = 0;
+      let doubleEscapes = 0;
+      // Model Pi's empty-editor double-Escape handler, using the real CustomEditor.
+      current.onEscape = () => {
+        interrupts++;
+        const now = Date.now();
+        if (now - lastEscapeTime < 500) {
+          doubleEscapes++;
+          lastEscapeTime = 0;
+        } else {
+          lastEscapeTime = now;
+        }
+      };
+
+      current.handleInput(escape);
+      assert.equal(current.getMode(), "normal");
+      assert.equal(interrupts, 1, "empty-prompt Escape must reach Pi immediately");
+      current.handleInput(escape);
+      assert.equal(interrupts, 2);
+      assert.equal(doubleEscapes, 1, "two presses must trigger Pi's double-Escape action");
+      current.handleInput(escape);
+      assert.equal(interrupts, 3, "each physical Escape is forwarded exactly once");
+    });
+  }
+
+  await t.test("insert Escape respects an already-armed Pi double-Escape handler", async (st) => {
+    st.mock.method(Date, "now", () => 10_000);
+    await extension.commands.get("vi").handler("on", context);
+    const current = editor;
+    let lastEscapeTime = 9_750;
+    let actions = 0;
+    current.onEscape = () => {
+      const now = Date.now();
+      if (now - lastEscapeTime < 500) {
+        actions++;
+        lastEscapeTime = 0;
+      } else {
+        lastEscapeTime = now;
+      }
+    };
+    current.handleInput("\x1b");
+    assert.equal(actions, 1);
+    assert.equal(lastEscapeTime, 0, "do not re-arm Pi after triggering its action");
+    current.handleInput("\x1b");
+    assert.equal(actions, 1, "the next Escape starts a new pair");
+  });
+
+  await t.test("Escape-bound extension shortcuts run once per physical key", async () => {
+    await extension.commands.get("vi").handler("on", context);
+    const current = editor;
+    let shortcuts = 0;
+    let interrupts = 0;
+    current.onExtensionShortcut = () => { shortcuts++; return true; };
+    current.onEscape = () => { interrupts++; };
+    current.handleInput("\x1b");
+    assert.equal(shortcuts, 1);
+    current.handleInput("\x1b");
+    assert.equal(shortcuts, 2);
+    assert.equal(interrupts, 0, "consuming shortcuts retain priority over app handling");
+  });
+
+  for (const scenario of ["timeout", "intervening key", "nonempty prompt", "whitespace prompt", "normal mode"]) {
+    await t.test(`Escape forwarding: ${scenario}`, async (st) => {
+      let now = 10_000;
+      st.mock.method(Date, "now", () => now);
+      await extension.commands.get("vi").handler("on", context);
+      const current = editor;
+      let interrupts = 0;
+      let lastEscapeTime = 0;
+      let doubleEscapes = 0;
+      current.onEscape = () => {
+        interrupts++;
+        if (now - lastEscapeTime < 500) {
+          doubleEscapes++;
+          lastEscapeTime = 0;
+        } else {
+          lastEscapeTime = now;
+        }
+      };
+      if (scenario === "nonempty prompt") current.setText("draft");
+      if (scenario === "whitespace prompt") current.setText(" \n ");
+      current.handleInput("\x1b");
+      assert.equal(interrupts, scenario === "nonempty prompt" ? 0 : 1);
+      if (scenario === "timeout") now += 500;
+      if (scenario === "intervening key" || scenario === "normal mode") current.handleInput("h");
+      current.handleInput("\x1b");
+      assert.equal(interrupts, scenario === "nonempty prompt" ? 1 : 2);
+      assert.equal(doubleEscapes, scenario === "timeout" || scenario === "nonempty prompt" ? 0 : 1);
+      if (scenario === "normal mode") {
+        current.handleInput("\x1b");
+        assert.equal(interrupts, 3, "normal mode forwards each Escape unchanged");
+      }
+    });
+  }
+
+  await t.test("dot-repeat does not forward synthetic insert Escape", async () => {
+    await extension.commands.get("vi").handler("on", context);
+    const current = editor;
+    let interrupts = 0;
+    current.onEscape = () => { interrupts++; };
+    current.setText("draft");
+    for (const key of ["\x1b", "c", "c", "\x1b"]) current.handleInput(key);
+    assert.equal(current.getText(), "");
+    assert.equal(interrupts, 1);
+    current.handleInput(".");
+    assert.equal(interrupts, 1);
+  });
+
   for (const initialHardwareCursor of [false, true]) {
     await t.test(`mode cursor respects hardware setting ${initialHardwareCursor}`, async () => {
       await extension.commands.get("vi").handler("off", context);
