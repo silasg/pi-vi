@@ -784,12 +784,14 @@ class ViEditor extends CustomEditor {
 	}
 
 	private handleViInput(data: string): void {
-		// Escape: toggle mode or pass through
+		// Leave insert mode, but let Pi count Escape on an empty prompt.
+		// Forward each physical key once so Pi owns double-Escape timing.
 		if (matchesKey(data, "escape")) {
 			if (this.mode === "insert") {
 				this.finishInsert();
 				this.setMode("normal");
 				this.resetPending();
+				if (!this.replaying && !this.getText().trim()) super.handleInput(data);
 				return;
 			}
 			this.resetPending();
