@@ -65,11 +65,10 @@ To hide the prompt indicator, add this to `~/.pi/agent/settings.json` (global) o
 }
 ```
 
-Both `viMode.showIndicator` and `viMode.showPaddingWarning` default to `true`.
-Disabling the indicator also suppresses its zero-padding warning.
-Set `showPaddingWarning` to `false` to suppress only the warning.
-These options do not affect the footer mode status, cursor shape, or pending commands.
-Restart Pi or run `/reload` after changing these settings.
+`viMode.showIndicator` defaults to `true`.
+The zero-padding warning appears only when the indicator is enabled.
+This option does not affect the footer mode status, cursor shape, or pending commands.
+Restart Pi or run `/reload` after changing this setting.
 
 ## Normal-mode keys
 

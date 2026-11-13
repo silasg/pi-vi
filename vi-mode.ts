@@ -1313,11 +1313,11 @@ export default function (
 	pi.on("session_start", (_event, ctx) => {
 		const settings = getSettingsManager(ctx.cwd);
 		const { viMode } = settings.getSettings() as ReturnType<SettingsManager["getSettings"]> & {
-			viMode?: { showIndicator?: boolean; showPaddingWarning?: boolean };
+			viMode?: { showIndicator?: boolean };
 		};
 		showIndicator = viMode?.showIndicator !== false;
 		enableViMode(ctx);
-		if (showIndicator && viMode?.showPaddingWarning !== false && settings.getEditorPaddingX() < 1) {
+		if (showIndicator && settings.getEditorPaddingX() < 1) {
 			ctx.ui.notify("vi-mode: Editor padding is 0 — mode indicator (❯/❮) won't be shown. Set editorPaddingX > 0 in /settings.", "warning");
 		}
 	});

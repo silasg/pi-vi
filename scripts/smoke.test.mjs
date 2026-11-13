@@ -149,7 +149,7 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
     { viMode: undefined, padding: 0, indicator: true, warning: true },
     { viMode: { showIndicator: false }, padding: 2, indicator: false, warning: false },
     { viMode: { showIndicator: false }, padding: 0, indicator: false, warning: false },
-    { viMode: { showPaddingWarning: false }, padding: 0, indicator: true, warning: false },
+    { viMode: { showIndicator: true }, padding: 0, indicator: true, warning: true },
   ]) {
     await t.test(`indicator settings ${JSON.stringify(viMode)} with padding ${padding}`, async (st) => {
       st.mock.method(SettingsManager.prototype, "getSettings", () => ({ viMode }));
