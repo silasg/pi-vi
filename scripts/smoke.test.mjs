@@ -144,6 +144,35 @@ test("package discovery, registration, and editor smoke checks", async (t) => {
   editor.handleInput("i");
   assert.ok(editor.render(80).some((line) => line.includes("❯")), "insert indicator renders");
 
+  for (const { viMode, padding, indicator, warning } of [
+    { viMode: undefined, padding: 2, indicator: true, warning: false },
+    { viMode: undefined, padding: 0, indicator: true, warning: true },
+    { viMode: { showIndicator: false }, padding: 2, indicator: false, warning: false },
+    { viMode: { showIndicator: false }, padding: 0, indicator: false, warning: false },
+    { viMode: { showPaddingWarning: false }, padding: 0, indicator: true, warning: false },
+  ]) {
+    await t.test(`indicator settings ${JSON.stringify(viMode)} with padding ${padding}`, async (st) => {
+      st.mock.method(SettingsManager.prototype, "getSettings", () => ({ viMode }));
+      st.mock.method(SettingsManager.prototype, "getEditorPaddingX", () => padding);
+      notifications.length = 0;
+      await extension.handlers.get("session_start")[0]({ type: "session_start" }, context);
+      assert.equal(notifications.some(([message]) => message.includes("Editor padding")), warning);
+      editor.setPaddingX(padding);
+      editor.setText("draft");
+      assert.equal(editor.render(80).some((line) => line.includes("❯")), indicator && padding > 0);
+      editor.handleInput("\x1b");
+      assert.equal(editor.render(80).some((line) => line.includes("❮")), indicator && padding > 0);
+      assert.match(statuses.get("vi-mode"), /NORMAL/);
+      editor.handleInput("d");
+      assert.ok(editor.render(80).some((line) => line.includes("[d]")));
+      await extension.commands.get("vi").handler("off", context);
+      await extension.commands.get("vi").handler("on", context);
+      editor.setPaddingX(padding);
+      assert.equal(editor.render(80).some((line) => line.includes("❯")), indicator && padding > 0);
+    });
+  }
+  await extension.handlers.get("session_start")[0]({ type: "session_start" }, context);
+
   for (const escape of ["\x1b", "\x1b[27u"]) {
     await t.test(`double Escape from insert mode (${JSON.stringify(escape)})`, async (st) => {
       st.mock.method(Date, "now", () => 10_000);

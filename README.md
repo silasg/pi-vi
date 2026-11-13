@@ -53,7 +53,23 @@ The extension respects Pi's `showHardwareCursor` setting:
 
 When using the hardware cursor, the extension restores the terminal's default cursor shape when focus leaves the editor, vi mode is disabled, or the session ends.
 It never changes `showHardwareCursor`.
-Use `editorPaddingX > 0` for the mode indicator. Restart after changing this setting.
+Use `editorPaddingX > 0` for the mode indicator.
+
+To hide the prompt indicator, add this to `~/.pi/agent/settings.json` (global) or `.pi/settings.json` (project):
+
+```json
+{
+  "viMode": {
+    "showIndicator": false
+  }
+}
+```
+
+Both `viMode.showIndicator` and `viMode.showPaddingWarning` default to `true`.
+Disabling the indicator also suppresses its zero-padding warning.
+Set `showPaddingWarning` to `false` to suppress only the warning.
+These options do not affect the footer mode status, cursor shape, or pending commands.
+Restart Pi or run `/reload` after changing these settings.
 
 ## Normal-mode keys
 
