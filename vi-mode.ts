@@ -375,6 +375,7 @@ class ViEditor extends CustomEditor {
 		tui: TUI, theme: EditorTheme,
 		private readonly viKeybindings: KeybindingsManager,
 		private readonly writeClipboard: (text: string) => Promise<void>,
+		private readonly showIndicator: boolean,
 	) {
 		super(tui, theme, viKeybindings, { paddingX: 2, embedWorkingStatus: true });
 	}
@@ -1218,7 +1219,7 @@ class ViEditor extends CustomEditor {
 			}
 		}
 
-		this.insertPromptIndicator(lines);
+		if (this.showIndicator) this.insertPromptIndicator(lines);
 
 		// Show pending state in bottom border
 		let pending = "";
@@ -1251,6 +1252,7 @@ export default function (
 	copyClipboard: (text: string) => Promise<void> = copyToClipboard,
 ) {
 	let viModeEnabled = true;
+	let showIndicator = true;
 	let currentEditor: ViEditor | null = null;
 	let clipboardContext: Pick<ExtensionContext, "ui"> | undefined;
 	let pendingClipboardText: string | undefined;
@@ -1292,7 +1294,7 @@ export default function (
 		clipboardContext = ctx;
 		ctx.ui.setEditorComponent((tui: TUI, theme: EditorTheme, kb: KeybindingsManager) => {
 			currentEditor?.restoreCursor();
-			currentEditor = new ViEditor(tui, theme, kb, writeClipboard);
+			currentEditor = new ViEditor(tui, theme, kb, writeClipboard, showIndicator);
 			currentEditor.onModeChange = (mode: Mode) => updateStatus(ctx, mode);
 			return currentEditor;
 		});
@@ -1310,8 +1312,12 @@ export default function (
 
 	pi.on("session_start", (_event, ctx) => {
 		const settings = getSettingsManager(ctx.cwd);
+		const { viMode } = settings.getSettings() as ReturnType<SettingsManager["getSettings"]> & {
+			viMode?: { showIndicator?: boolean };
+		};
+		showIndicator = viMode?.showIndicator !== false;
 		enableViMode(ctx);
-		if (settings.getEditorPaddingX() < 1) {
+		if (showIndicator && settings.getEditorPaddingX() < 1) {
 			ctx.ui.notify("vi-mode: Editor padding is 0 — mode indicator (❯/❮) won't be shown. Set editorPaddingX > 0 in /settings.", "warning");
 		}
 	});
